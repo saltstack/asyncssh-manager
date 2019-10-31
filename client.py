@@ -2,6 +2,14 @@ import socket
 import struct
 import msgpack
 
+SSH_PORT = 22
+
+
+class ClientException(Exception):
+    '''
+    Raised by ManagerClient when errors are encountered
+    '''
+
 
 class ManagerClient(object):
 
@@ -25,7 +33,7 @@ class ManagerClient(object):
 
     def ssh_connect(self, host):
         if not self.sock:
-            raise Exception('No manager connection')
+            raise ClientException('No manager connection')
         req = self.create_msg({'kind': 'connect', 'host': host})
         self.sock.send(req)
         rep = self.recv_msg(self.sock)
@@ -34,9 +42,9 @@ class ManagerClient(object):
 
     def ssh_exec(self, cmd):
         if not self.sock:
-            raise Exception('No manager connection')
+            raise ClientException('No manager connection')
         if not self.conn_id:
-            raise Exception('No ssh connection')
+            raise ClientException('No ssh connection')
         req = self.create_msg({'kind': 'run', 'conn_id': self.conn_id, 'command': cmd})
         self.sock.send(req)
         rep = self.recv_msg(self.sock)
@@ -45,9 +53,9 @@ class ManagerClient(object):
 
     def ssh_disconnect(self):
         if not self.sock:
-            raise Exception('No manager connection')
+            raise ClientException('No manager connection')
         if not self.conn_id:
-            raise Exception('No ssh connection')
+            raise ClientException('No ssh connection')
         req = self.create_msg({'kind': 'disconnect', 'conn_id': self.conn_id})
         self.sock.send(req)
         rep = self.recv_msg(self.sock)
