@@ -73,7 +73,7 @@ class Manager(object):
     async def handle_close(self, client, msg):
         await client.writer.drain()
         client.writer.close()
-        client.reader.close()
+        #client.reader.close()
         return False
 
     async def handle_disconnect(self, client, msg):
@@ -97,6 +97,7 @@ class Manager(object):
         '''
         Handle new client connections by spawning a `handle_client` task.
         '''
+        log.info("New client")
         addr = writer.get_extra_info('peername')
         client =  Client(addr, reader, writer)
         self.clients[addr] = client
@@ -143,17 +144,16 @@ class Manager(object):
         '''
         Clean up client tasks as they end
         '''
-        try:
-            while True: # self.keep_running:
-                for addr in list(self.clients):
-                    client = self.clients[addr]
-                    if client.task.done():
-                        self.clients.pop(addr)
+ #       try:
+        while True: # self.keep_running:
+            for addr in list(self.clients):
+                client = self.clients[addr]
+                if client.task.done():
+                    self.clients.pop(addr)
                     await client.task
             await asyncio.sleep(.3)
-        except KeyboardInterrupt:
-            pass
-
+#        except KeyboardInterrupt:
+#            pass
 
     async def start(self, address, port, loop):
         coro = asyncio.start_server(self.new_client, address, port, loop=loop)
@@ -169,8 +169,10 @@ def main():
     loop = asyncio.get_event_loop()
     manager = Manager()
     #task = asyncio.ensure_future(manager.start(ns.address, ns.port, loop))
+    asyncio.ensure_future(manager.start(ns.address, ns.port, loop))
     try:
-        loop.run_until_complete(manager.start(ns.address, ns.port, loop))
+        #loop.run_until_complete(manager.start(ns.address, ns.port, loop))
+        loop.run_forever()
     except KeyboardInterrupt:
         print("MEH 1")
         manager.keep_running = False
