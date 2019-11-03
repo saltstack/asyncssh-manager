@@ -28,7 +28,7 @@ def recv_msg(sock):
     return msgpack.unpackb(recvall(sock, msglen), raw=False)
 
 s = socket.socket()
-s.connect(('127.0.0.1', 8888))
+s.connect(('127.0.0.1', 10888))
 print('client connect')
 
 msg = create_msg({'kind': 'connect', 'host': '10.27.3.51'})
