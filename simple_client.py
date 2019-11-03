@@ -27,10 +27,13 @@ def recv_msg(sock):
     # Read the message data
     return msgpack.unpackb(recvall(sock, msglen), raw=False)
 
+print('socket connect')
+
 s = socket.socket()
 s.connect(('127.0.0.1', 10888))
-print('client connect')
+print('socket connected')
 
+print('client connect')
 msg = create_msg({'kind': 'connect', 'host': '10.27.3.51'})
 s.send(msg)
 msg = recv_msg(s)

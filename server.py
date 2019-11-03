@@ -87,6 +87,7 @@ class Manager(object):
     async def handle_connect(self, client, msg):
         '''
         '''
+        log.warn("HANDLE CONNECT")
         conn_id = str(uuid.uuid4())
         connection = await asyncssh.connect(msg['host'])
         self.connections[conn_id] = connection
@@ -168,17 +169,13 @@ def main():
     # Serve requests until Ctrl+C is pressed
     loop = asyncio.get_event_loop()
     manager = Manager()
-    #task = asyncio.ensure_future(manager.start(ns.address, ns.port, loop))
-    asyncio.ensure_future(manager.start(ns.address, ns.port, loop))
+    task = asyncio.ensure_future(manager.start(ns.address, ns.port, loop))
     try:
-        #loop.run_until_complete(manager.start(ns.address, ns.port, loop))
         loop.run_forever()
+        #loop.run_until_complete(manager.start(ns.address, ns.port, loop))
     except KeyboardInterrupt:
-        print("MEH 1")
         manager.keep_running = False
-        print("MEH 2")
         loop.stop()
-        print("MEH 3")
     finally:
         loop.close()
 

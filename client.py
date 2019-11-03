@@ -1,6 +1,11 @@
+import logging
+import msgpack
 import socket
 import struct
-import msgpack
+import time
+
+
+log = logging.getLogger()
 
 SSH_PORT = 22
 
@@ -17,9 +22,19 @@ class ManagerClient(object):
         self.conn_id = conn_id
         self.sock = sock
 
-    def connect(self, host, port):
+    def connect(self, host, port, timeout=30):
         self.sock = socket.socket()
-        self.sock.connect((host, port))
+        start = time.time()
+        connected = False
+        while not connected and time.time() - start < timeout:
+            try:
+                self.sock.connect((host, port))
+            except ConnectionRefusedError:
+                time.sleep(.3)
+            else:
+                connected = True
+        if not connected:
+            raise ClientException('Unable to connect to manager')
 
     def close(self):
         req = self.create_msg({'kind': 'close'})
@@ -79,15 +94,15 @@ class ManagerClient(object):
             data += packet
         return data
 
-    @staticmethod
-    def recv_msg(sock):
+    @classmethod
+    def recv_msg(cls, sock):
         # Read message length and unpack it into an integer
-        raw_msglen = recvall(sock, 4)
+        raw_msglen = cls.recvall(sock, 4)
         if not raw_msglen:
             return None
         msglen = struct.unpack('>I', raw_msglen)[0]
         # Read the message data
-        return msgpack.unpackb(recvall(sock, msglen), raw=False)
+        return msgpack.unpackb(cls.recvall(sock, msglen), raw=False)
 
 
 class SSHClient(object):
@@ -98,13 +113,13 @@ class SSHClient(object):
         if manager is not None:
             self.manager = manager
         else:
-            self.manager = Manager()
+            self.manager = ManagerClient()
 
     def has_manager_conn(self):
-        return self.sock is not None
+        return self.manager.sock is not None
 
-    def connect_manager(self):
-        self.manager.connect(self.manager_host, self.manager_port)
+    def connect_manager(self, timeout=30):
+        self.manager.connect(self.manager_host, self.manager_port, timeout=timeout)
 
     def connect(
         self,
@@ -131,5 +146,5 @@ class SSHClient(object):
     ):
         if not self.has_manager_conn():
             self.connect_manager()
+        print("Connecting to %s" % (hostname,))
         self.manager.ssh_connect(hostname)
-
