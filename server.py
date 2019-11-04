@@ -33,6 +33,29 @@ class Client(object):
         self.task = task
 
 
+class Connection(object):
+
+    def __init__(self, conn_id, conn, procs=None):
+        self.conn_id = conn_id
+        self.conn = conn
+        if procs is None:
+            self.procs = {}
+        else:
+            self.procs = procs
+
+    async def run(self, *args, **kwargs):
+        return await self.conn.run(*args, **kwargs)
+
+    async def wait_closed(self, *args, **kwargs):
+        return await self.conn.wait_closed(*args, **kwargs)
+
+    async def create_process(self, *args, **kwargs):
+        return await self.conn.create_process(*args, **kwargs)
+
+    def close(self):
+        self.conn.close()
+
+
 class Manager(object):
 
     # Map message kinds to handle methods
@@ -41,6 +64,16 @@ class Manager(object):
         'disconnect': 'handle_disconnect',
         'close': 'handle_close',
         'run': 'handle_run',
+        'exec': 'handle_exec',
+        'write_stream': 'handle_write_stream',
+        'read_stream': 'handle_read_stream',
+    }
+
+    # Map stram names too process object attribute names
+    streams = {
+        'stdin': 'stdin',
+        'stdout': 'stdout',
+        'stderr': 'stderr',
     }
 
     def __init__(self, clients=None, connections=None):
@@ -67,7 +100,52 @@ class Manager(object):
         conn_id = msg['conn_id']
         conn = self.connections[conn_id]
         result = await conn.run(msg['command'], check=True)
-        await self.send_msg(client.writer, {'conn_id': conn_id, 'stdout': result.stdout})
+        msg = {
+            'conn_id': conn_id,
+            'stdout': result.stdout,
+            'stderr': result.stderr,
+        }
+        await self.send_msg(client.writer, msg)
+        return True
+
+    async def handle_exec(self, client, msg):
+        conn_id = msg['conn_id']
+        conn = self.connections[conn_id]
+        proc_id = self.gen_id()
+        process = await conn.create_process(msg['command'], check=True)
+        conn.procs[proc_id] = process
+        await self.send_msg(client.writer, {'conn_id': conn_id, 'proc_id': proc_id})
+        return True
+
+    async def handle_write_stream(self, client, msg):
+        conn_id = msg['conn_id']
+        conn = self.connections[conn_id]
+        proc_id = msg['proc_id']
+        process = conn.procs[proc_id]
+        attr = self.streams[msg['name']]
+        stream = getattr(process, attr)
+        process.write(msg['byts'])
+        reply = {
+            'conn_id': conn_id,
+            'proc_id': proc_id,
+        }
+        await self.send_msg(client.writer, reply)
+        return True
+
+    async def handle_read_stream(self, client, msg):
+        conn_id = msg['conn_id']
+        conn = self.connections[conn_id]
+        proc_id = msg['proc_id']
+        process = conn.procs[proc_id]
+        attr = self.streams[msg['name']]
+        stream = getattr(process, attr)
+        out = stream.write(msg[size])
+        reply = {
+            'conn_id': conn_id,
+            'proc_id': proc_id,
+            'byts': out
+        }
+        await self.send_msg(client.writer, reply)
         return True
 
     async def handle_close(self, client, msg):
@@ -87,9 +165,10 @@ class Manager(object):
     async def handle_connect(self, client, msg):
         '''
         '''
-        log.warn("HANDLE CONNECT")
-        conn_id = str(uuid.uuid4())
-        connection = await asyncssh.connect(msg['host'])
+        log.warn("handle connect")
+        conn_id = self.gen_id()
+        conn = await asyncssh.connect(msg['host'])
+        connection = Connection(conn_id, conn)
         self.connections[conn_id] = connection
         await self.send_msg(client.writer, {'conn_id': conn_id, 'status': 'connected'})
         return True
@@ -162,6 +241,8 @@ class Manager(object):
         log.info('Serving on {}'.format(server.sockets[0].getsockname()))
         await asyncio.ensure_future(self.serve())
 
+    def gen_id(self):
+        return str(uuid.uuid4())
 
 def main():
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')

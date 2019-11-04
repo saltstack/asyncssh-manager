@@ -16,6 +16,27 @@ class ClientException(Exception):
     '''
 
 
+class ProcIO(object):
+
+    def __init__(self, conn, proc_id, name):
+        self.conn = conn
+        self.proc_id = proc_id
+        self.name = name
+
+    def read(self, size=None):
+        if self.name in ('stdout', 'stderr'):
+            raise Exception("Stream not readable")
+        if self.name == 'stdout':
+            return self.conn.read_stdout(self.proc_id, size)
+        if self.name == 'stderr':
+            return self.conn.read_stderr(self.proc_id, size)
+
+    def write(self, byts):
+        if self.name != 'stdin':
+            raise Exception("Stream not writable")
+        self.conn.write_stdin(self.proc_id, byts)
+
+
 class ManagerClient(object):
 
     def __init__(self, conn_id=None, sock=None):
@@ -55,7 +76,7 @@ class ManagerClient(object):
         # TODO: error checking
         self.conn_id = rep['conn_id']
 
-    def ssh_exec(self, cmd):
+    def ssh_run(self, cmd):
         if not self.sock:
             raise ClientException('No manager connection')
         if not self.conn_id:
@@ -64,7 +85,51 @@ class ManagerClient(object):
         self.sock.send(req)
         rep = self.recv_msg(self.sock)
         # TODO: error checking
-        return rep['stdout'], rep['stderr']
+        return cmd, rep['stdout'], rep['stderr']
+
+    def ssh_exec(self, cmd):
+        if not self.sock:
+            raise ClientException('No manager connection')
+        if not self.conn_id:
+            raise ClientException('No ssh connection')
+        req = self.create_msg({'kind': 'exec', 'conn_id': self.conn_id, 'command': cmd})
+        self.sock.send(req)
+        rep = self.recv_msg(self.sock)
+
+    def write_stream(self, proc_id, name, byts):
+        if not self.sock:
+            raise ClientException('No manager connection')
+        if not self.conn_id:
+            raise ClientException('No ssh connection')
+        req = self.create_msg(
+            {
+                'kind': 'write_stream',
+                'conn_id': self.conn_id,
+                'proc_id': proc_id,
+                'name': name,
+                'byts': byts,
+            }
+        )
+        self.sock.send(req)
+        self.recv_msg(self.sock)
+
+    def read_stream(self, proc_id, name, size=None):
+        if not self.sock:
+            raise ClientException('No manager connection')
+        if not self.conn_id:
+            raise ClientException('No ssh connection')
+        req = self.create_msg(
+            {
+                'kind': 'write_stream',
+                'conn_id': self.conn_id,
+                'proc_id': proc_id,
+                'name': name,
+                'size': size,
+            }
+        )
+        self.sock.send(req)
+        rep = self.recv_msg(self.sock)
+        return rep['byts']
 
     def ssh_disconnect(self):
         if not self.sock:
@@ -148,3 +213,16 @@ class SSHClient(object):
             self.connect_manager()
         print("Connecting to %s" % (hostname,))
         self.manager.ssh_connect(hostname)
+
+    def close(self):
+        self.manager.ssh_disconnect()
+
+    def exec_command(
+        self,
+        command,
+        bufsize=-1,
+        timeout=None,
+        get_pty=False,
+        environment=None,
+    ):
+        return self.manager.ssh_run(command)

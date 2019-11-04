@@ -34,5 +34,3 @@ def sshd():
             listen_addr, listen_port = listen[0], 22
             break
     yield SshdFixture(listen_addr, listen_port)
-
-
