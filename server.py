@@ -5,6 +5,7 @@ import logging
 import msgpack
 import struct
 import uuid
+import signal
 
 
 log = logging.getLogger()
@@ -112,7 +113,10 @@ class Manager(object):
         conn_id = msg['conn_id']
         conn = self.connections[conn_id]
         proc_id = self.gen_id()
-        process = await conn.create_process(msg['command'], check=True)
+        log.error("Create process %s", msg['command'])
+        process = await conn.create_process(msg['command'])
+        log.error("after create")
+
         conn.procs[proc_id] = process
         await self.send_msg(client.writer, {'conn_id': conn_id, 'proc_id': proc_id})
         return True
@@ -124,7 +128,7 @@ class Manager(object):
         process = conn.procs[proc_id]
         attr = self.streams[msg['name']]
         stream = getattr(process, attr)
-        process.write(msg['byts'])
+        stream.write(msg['byts'])
         reply = {
             'conn_id': conn_id,
             'proc_id': proc_id,
@@ -139,7 +143,7 @@ class Manager(object):
         process = conn.procs[proc_id]
         attr = self.streams[msg['name']]
         stream = getattr(process, attr)
-        out = stream.write(msg[size])
+        out = await stream.read(msg['size'])
         reply = {
             'conn_id': conn_id,
             'proc_id': proc_id,
@@ -220,29 +224,60 @@ class Manager(object):
         # Read the message data
         return msgpack.unpackb(await self._recv_all(reader, msglen), raw=False)
 
-    async def serve(self):
+    async def serve(self, loop):
         '''
         Clean up client tasks as they end
         '''
- #       try:
-        while True: # self.keep_running:
-            for addr in list(self.clients):
-                client = self.clients[addr]
-                if client.task.done():
-                    self.clients.pop(addr)
-                    await client.task
-            await asyncio.sleep(.3)
-#        except KeyboardInterrupt:
-#            pass
+        try:
+            while True: # self.keep_running:
+                for addr in list(self.clients):
+                    client = self.clients[addr]
+                    if client.task.done():
+                        self.clients.pop(addr)
+                        await client.task
+                await asyncio.sleep(.3)
+        except asyncio.CancelledError:
+            log.debug('serve task exiting')
 
     async def start(self, address, port, loop):
         coro = asyncio.start_server(self.new_client, address, port, loop=loop)
         server = await asyncio.ensure_future(coro)
         log.info('Serving on {}'.format(server.sockets[0].getsockname()))
-        await asyncio.ensure_future(self.serve())
+        task = asyncio.ensure_future(self.serve(loop))
+        try:
+            await task
+        except asyncio.CancelledError:
+            log.debug('Start task cancelled - cleaning up')
+            task.cancel()
+        for addr in list(self.clients):
+            client = self.clients[addr]
+            if client.task.done():
+                self.clients.pop(addr)
+                await client.task
+            else:
+                client.task.cancel()
+                # Ensure the task is fully canceled
+                try:
+                    await client.task
+                except asyncio.CancelledError:
+                    pass
+        #await asyncio.sleep(1)
+        log.debug('Stopping event loop')
+        loop.stop()
 
     def gen_id(self):
         return str(uuid.uuid4())
+
+
+class ExitHandler(object):
+    def __init__(self, loop, sig, task):
+        self.loop = loop
+        self.task = task
+        self.sig = sig
+
+    def __call__(self):
+        self.task.cancel()
+        self.loop.remove_signal_handler(self.sig)
 
 def main():
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -251,13 +286,12 @@ def main():
     loop = asyncio.get_event_loop()
     manager = Manager()
     task = asyncio.ensure_future(manager.start(ns.address, ns.port, loop))
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, ExitHandler(loop, sig,  task))
     try:
         loop.run_forever()
-        #loop.run_until_complete(manager.start(ns.address, ns.port, loop))
-    except KeyboardInterrupt:
-        manager.keep_running = False
-        loop.stop()
     finally:
+        log.debug('Closing event loop')
         loop.close()
 
 if __name__ == '__main__':

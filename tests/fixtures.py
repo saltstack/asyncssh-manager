@@ -3,6 +3,7 @@ import collections
 import random
 import signal
 import subprocess
+import time
 
 import pytest
 
@@ -16,6 +17,7 @@ def server_process():
     port = random.randint(10000, 65535)
     proc = subprocess.Popen(['python', 'server.py', '--port', str(port)])
     yield ServerFixture(proc, port)
+#    time.sleep(.3)
     os.kill(proc.pid, signal.SIGINT)
     proc.wait()
 

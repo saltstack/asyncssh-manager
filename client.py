@@ -24,17 +24,14 @@ class ProcIO(object):
         self.name = name
 
     def read(self, size=None):
-        if self.name in ('stdout', 'stderr'):
+        if self.name not in ('stdout', 'stderr'):
             raise Exception("Stream not readable")
-        if self.name == 'stdout':
-            return self.conn.read_stdout(self.proc_id, size)
-        if self.name == 'stderr':
-            return self.conn.read_stderr(self.proc_id, size)
+        return self.conn.read_stream(self.proc_id, self.name, size)
 
     def write(self, byts):
         if self.name != 'stdin':
             raise Exception("Stream not writable")
-        self.conn.write_stdin(self.proc_id, byts)
+        self.conn.write_stream(self.proc_id, self.name, byts)
 
 
 class ManagerClient(object):
@@ -60,6 +57,8 @@ class ManagerClient(object):
     def close(self):
         req = self.create_msg({'kind': 'close'})
         self.sock.send(req)
+        rep = self.recv_msg(self.sock)
+        print(repr(rep))
         self.sock.close()
         self.sock = None
 
@@ -95,6 +94,10 @@ class ManagerClient(object):
         req = self.create_msg({'kind': 'exec', 'conn_id': self.conn_id, 'command': cmd})
         self.sock.send(req)
         rep = self.recv_msg(self.sock)
+        stdin = ProcIO(self, rep['proc_id'], 'stdin')
+        stdout = ProcIO(self, rep['proc_id'], 'stdout')
+        stderr = ProcIO(self, rep['proc_id'], 'stderr')
+        return stdin, stdout, stderr
 
     def write_stream(self, proc_id, name, byts):
         if not self.sock:
@@ -120,7 +123,7 @@ class ManagerClient(object):
             raise ClientException('No ssh connection')
         req = self.create_msg(
             {
-                'kind': 'write_stream',
+                'kind': 'read_stream',
                 'conn_id': self.conn_id,
                 'proc_id': proc_id,
                 'name': name,
@@ -225,4 +228,4 @@ class SSHClient(object):
         get_pty=False,
         environment=None,
     ):
-        return self.manager.ssh_run(command)
+        return self.manager.ssh_exec(command)

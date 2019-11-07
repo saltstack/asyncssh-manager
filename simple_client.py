@@ -44,6 +44,29 @@ print('send run')
 s.send(msg)
 msg = recv_msg(s)
 print('client got : %s' % (msg))
+
+
+msg = create_msg({'kind': 'exec', 'conn_id': conn_id, 'command': 'bc'})
+s.send(msg)
+msg = recv_msg(s)
+print(msg)
+proc_id = msg['proc_id']
+
+msg = create_msg({'kind': 'read_stream', 'conn_id': conn_id, 'proc_id': proc_id, 'name': 'stdout', 'size': None})
+s.send(msg)
+msg = recv_msg(s)
+print(msg)
+
+msg = create_msg({'kind': 'write_stream', 'conn_id': conn_id, 'proc_id': proc_id, 'name': 'stdin', 'byts': '12+4'})
+s.send(msg)
+msg = recv_msg(s)
+print(msg)
+
+msg = create_msg({'kind': 'read_stream', 'conn_id': conn_id, 'proc_id': proc_id, 'name': 'stdout', 'size': None})
+s.send(msg)
+msg = recv_msg(s)
+print(msg)
+
 msg = create_msg({'kind': 'disconnect', 'conn_id': conn_id})
 s.send(msg)
 msg = recv_msg(s)
