@@ -155,7 +155,6 @@ class Manager(object):
     async def handle_close(self, client, msg):
         await client.writer.drain()
         client.writer.close()
-        #client.reader.close()
         return False
 
     async def handle_disconnect(self, client, msg):
@@ -261,7 +260,6 @@ class Manager(object):
                     await client.task
                 except asyncio.CancelledError:
                     pass
-        #await asyncio.sleep(1)
         log.debug('Stopping event loop')
         loop.stop()
 
