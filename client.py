@@ -58,7 +58,6 @@ class ManagerClient(object):
         req = self.create_msg({'kind': 'close'})
         self.sock.send(req)
         rep = self.recv_msg(self.sock)
-        print(repr(rep))
         self.sock.close()
         self.sock = None
 
@@ -171,6 +170,20 @@ class ManagerClient(object):
         msglen = struct.unpack('>I', raw_msglen)[0]
         # Read the message data
         return msgpack.unpackb(cls.recvall(sock, msglen), raw=False)
+
+
+class ClientFactory(object):
+
+    def __init__(self, manager_host='127.0.0.1', manager_port='12345', manager=None):
+        self.manager_host = manager_host
+        self.manager_port = manager_port
+        if manager is not None:
+            self.manager = manager
+        else:
+            self.manager = ManagerClient()
+
+    def __call__(self):
+        return SSHClient(self.manager_host, self.manager_port, self.manager)
 
 
 class SSHClient(object):
