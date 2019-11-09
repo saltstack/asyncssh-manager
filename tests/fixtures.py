@@ -24,15 +24,20 @@ def server_process():
 
 @pytest.fixture(scope='session')
 def sshd():
-    proc = subprocess.Popen(['netstat', '-nlp'], stdout=subprocess.PIPE)
-    proc.wait()
-    listen_addr, listen_port = None, None
-    for line in proc.stdout.readlines():
-        spl = line.decode().split()
-        if 'tcp' not in spl:
-            continue
-        listen = spl[3].split(':')
-        if listen[1] == '22':
-            listen_addr, listen_port = listen[0], 22
-            break
+    fromenv = os.environ.get('TESTS_SSHD', None)
+    if fromenv:
+        addr, port = fromenv.split(':')
+        listen_addr, listen_port = addr, int(port)
+    else:
+        proc = subprocess.Popen(['netstat', '-nlp'], stdout=subprocess.PIPE)
+        proc.wait()
+        listen_addr, listen_port = None, None
+        for line in proc.stdout.readlines():
+            spl = line.decode().split()
+            if 'tcp' not in spl:
+                continue
+            listen = spl[3].split(':')
+            if listen[1] == '22':
+                listen_addr, listen_port = listen[0], 22
+                break
     yield SshdFixture(listen_addr, listen_port)
