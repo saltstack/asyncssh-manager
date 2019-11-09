@@ -258,7 +258,7 @@ class ShellTransport(object):
         return
 
 
-class Shell(object)
+class Shell(object):
     def __init__(self, *args, **kwargs):
         pass
 
