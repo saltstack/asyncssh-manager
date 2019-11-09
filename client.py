@@ -277,3 +277,6 @@ class Shell(object):
 
     def recv_ready(self, *args, **kwargs):
         log.warn("SHELL - RECV READY %r %r", args, kwargs)
+
+    def settimeout(self, *args, **kwargs):
+        log.warn("SHELL - SETTIMEOUT %r %r", args, kwargs)
