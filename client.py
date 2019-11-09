@@ -242,3 +242,38 @@ class SSHClient(object):
         environment=None,
     ):
         return self.manager.ssh_exec(command)
+
+    def invoke_shell(self, *args, **kwargs):
+        #TODO: stubbed for now
+        return Shell()
+
+    def set_missing_host_key_policy(self, policy):
+        log.warn("SSH_CLIENT - SET_MISSING_HOST_KEY_POLICY %r %r", args, kwargs)
+
+
+class ShellTransport(object):
+
+    def set_keepalive(self, *args, **kwargs):
+        log.warn("SHELL TRANSPORT - CLOSE %r %r", args, kwargs)
+        return
+
+
+class Shell(object)
+    def __init__(self, *args, **kwargs):
+        pass
+
+    @property
+    def transport(self):
+        return ShellTransport()
+
+    def close(self):
+        log.warn("SHELL - CLOSE %r %r", args, kwargs)
+
+    def sendall(self, *args, **kwargs):
+        log.warn("SHELL - SENDALL %r %r", args, kwargs)
+
+    def recv(self, *args, **kwargs):
+        log.warn("SHELL - RECV %r %r", args, kwargs)
+
+    def recv_ready(self, *args, **kwargs):
+        log.warn("SHELL - RECV READY %r %r", args, kwargs)
