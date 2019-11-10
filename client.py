@@ -28,6 +28,11 @@ class ProcIO(object):
             raise Exception("Stream not readable")
         return self.conn.read_stream(self.proc_id, self.name, size)
 
+    def read_ready(self):
+        if self.name not in ('stdout', 'stderr'):
+            raise Exception("Stream not readable")
+        return self.conn.read_ready(self.proc_id, self.name)
+
     def write(self, byts):
         if self.name != 'stdin':
             raise Exception("Stream not writable")
@@ -85,18 +90,24 @@ class ManagerClient(object):
         # TODO: error checking
         return cmd, rep['stdout'], rep['stderr']
 
-    def ssh_exec(self, cmd):
+    def ssh_exec(self, cmd=None, term=None, width=None, height=None, env=None):
         if not self.sock:
             raise ClientException('No manager connection')
         if not self.conn_id:
             raise ClientException('No ssh connection')
-        req = self.create_msg({'kind': 'exec', 'conn_id': self.conn_id, 'command': cmd})
+        req_msg = {
+            'kind': 'exec',
+            'conn_id': self.conn_id,
+            'command': cmd,
+            'term': term,
+            'width': width,
+            'height': height,
+            'env': env,
+        }
+        req = self.create_msg(req_msg)
         self.sock.send(req)
         rep = self.recv_msg(self.sock)
-        stdin = ProcIO(self, rep['proc_id'], 'stdin')
-        stdout = ProcIO(self, rep['proc_id'], 'stdout')
-        stderr = ProcIO(self, rep['proc_id'], 'stderr')
-        return stdin, stdout, stderr
+        return rep['proc_id']
 
     def write_stream(self, proc_id, name, byts):
         if not self.sock:
@@ -132,6 +143,23 @@ class ManagerClient(object):
         self.sock.send(req)
         rep = self.recv_msg(self.sock)
         return rep['byts']
+
+    def read_ready(self, proc_id, name):
+        if not self.sock:
+            raise ClientException('No manager connection')
+        if not self.conn_id:
+            raise ClientException('No ssh connection')
+        req = self.create_msg(
+            {
+                'kind': 'read_ready',
+                'conn_id': self.conn_id,
+                'proc_id': proc_id,
+                'name': name,
+            }
+        )
+        self.sock.send(req)
+        rep = self.recv_msg(self.sock)
+        return rep['ready']
 
     def ssh_disconnect(self):
         if not self.sock:
@@ -241,11 +269,25 @@ class SSHClient(object):
         get_pty=False,
         environment=None,
     ):
-        return self.manager.ssh_exec(command)
+        proc_id = self.manager.ssh_exec(command)
+        stdin = ProcIO(self.manager, proc_id, 'stdin')
+        stdout = ProcIO(self.manager, proc_id, 'stdout')
+        stderr = ProcIO(self.manager, proc_id, 'stderr')
+        return stdin, stdout, stderr
 
-    def invoke_shell(self, *args, **kwargs):
-        #TODO: stubbed for now
-        return Shell()
+    def invoke_shell(
+            self, term="vt100", width=80, height=24, width_pixels=0,
+            height_pixels=0, environment=None,
+        ):
+        if height_pixels or width_pixels:
+            raise Exception("Opion not supported")
+        proc_id = self.manager.ssh_exec(
+            term=term, height=height, width=width, env=environment
+        )
+        stdin = ProcIO(self.manager, proc_id, 'stdin')
+        stdout = ProcIO(self.manager, proc_id, 'stdout')
+        stderr = ProcIO(self.manager, proc_id, 'stderr')
+        return Shell(self.manager, proc_id, stdin, stdout, stderr)
 
     def set_missing_host_key_policy(self, policy):
         log.warn("SSH_CLIENT - SET_MISSING_HOST_KEY_POLICY %r %r", args, kwargs)
@@ -259,24 +301,39 @@ class ShellTransport(object):
 
 
 class Shell(object):
-    def __init__(self, *args, **kwargs):
-        pass
+    def __init__(self, manager, proc_id, stdin, stdout, stderr):
+        self.manager = manager
+        self.proc_id = proc_id
+        self.stdin = stdin
+        self.stdout = stdout
+        self.stderr = stderr
 
     @property
     def transport(self):
         return ShellTransport()
 
     def close(self):
-        log.warn("SHELL - CLOSE %r %r", args, kwargs)
+        log.warning("SHELL - CLOSE %r %r", args, kwargs)
 
-    def sendall(self, *args, **kwargs):
-        log.warn("SHELL - SENDALL %r %r", args, kwargs)
+    def sendall(self, data):
+        log.warning("SHELL - SENDALL %r", data)
+        self.stdin.send(data)
 
-    def recv(self, *args, **kwargs):
-        log.warn("SHELL - RECV %r %r", args, kwargs)
+    def recv(self, size):
+        log.warning("SHELL - RECV %r", size)
+        return self.stdout.read(size)
 
     def recv_ready(self, *args, **kwargs):
-        log.warn("SHELL - RECV READY %r %r", args, kwargs)
+        log.warning("SHELL - RECV_READY %r %r", args, kwargs)
+        return self.stdout.read_ready()
+
+    def recv_stderr(self, size):
+        log.warning("SHELL - RECV_STDERR %r", size)
+        return self.stderr.read(size)
+
+    def recv_stderr_ready(self, *args, **kwargs):
+        log.warning("SHELL - RECV_STDERR_READY %r %r", args, kwargs)
+        return self.stderr.read_ready()
 
     def settimeout(self, *args, **kwargs):
-        log.warn("SHELL - SETTIMEOUT %r %r", args, kwargs)
+        log.warning("SHELL - SETTIMEOUT %r %r", args, kwargs)

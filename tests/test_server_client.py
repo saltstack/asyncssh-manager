@@ -1,4 +1,5 @@
 
+import time
 from client import SSHClient, ClientException
 
 from .fixtures import server_process, sshd
@@ -60,3 +61,21 @@ def test_client_server_ssh_close(server_process, sshd):
     assert client.manager.conn_id is not None
     client.close()
     assert client.manager.conn_id is None
+
+def test_client_server_ssh_shell(server_process, sshd):
+    client = SSHClient(manager_port=server_process.port)
+    client.connect_manager()
+    assert client.has_manager_conn()
+    assert client.manager.conn_id is None
+    client.connect(sshd.addr, sshd.port)
+    assert client.manager.conn_id is not None
+    shell = client.invoke_shell()
+    start = time.time()
+    # wait up to 10 seconds for read_ready
+    while time.time() - start < 10:
+        ret = shell.recv_ready()
+        if ret is True:
+            break
+    assert ret is True
+    out  = shell.stdout.read(1024)
+    assert len(out) > 1

@@ -68,6 +68,7 @@ class Manager(object):
         'exec': 'handle_exec',
         'write_stream': 'handle_write_stream',
         'read_stream': 'handle_read_stream',
+        'read_ready': 'handle_read_ready',
     }
 
     # Map stram names too process object attribute names
@@ -114,7 +115,14 @@ class Manager(object):
         conn = self.connections[conn_id]
         proc_id = self.gen_id()
         log.error("Create process %s", msg['command'])
-        process = await conn.create_process(msg['command'])
+        kwargs = {}
+        if msg['term'] is not None:
+            kwargs['term_type'] = msg['term']
+        if msg['height'] is not None and msg['width'] is not None:
+            kwargs['term_size'] = (msg['width'], msg['height'])
+        if msg['env'] is not None:
+            kwargs['env'] = msg['env']
+        process = await conn.create_process(msg['command'], **kwargs)
         log.error("after create")
 
         conn.procs[proc_id] = process
@@ -148,6 +156,29 @@ class Manager(object):
             'conn_id': conn_id,
             'proc_id': proc_id,
             'byts': out
+        }
+        await self.send_msg(client.writer, reply)
+        return True
+
+    async def handle_read_ready(self, client, msg):
+        conn_id = msg['conn_id']
+        conn = self.connections[conn_id]
+        proc_id = msg['proc_id']
+        process = conn.procs[proc_id]
+        attr = self.streams[msg['name']]
+        datatype = None
+        if attr == 'stderr':
+            datatype = 1
+        if datatype not in process._recv_buf:
+            ready = False
+        elif len(process._recv_buf[datatype]) > 0:
+            ready = True
+        else:
+            ready = False
+        reply = {
+            'conn_id': conn_id,
+            'proc_id': proc_id,
+            'ready': ready,
         }
         await self.send_msg(client.writer, reply)
         return True
